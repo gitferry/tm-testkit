@@ -240,7 +240,7 @@ ENV_VAR_MATCHERS = [
     re.compile(r"\$(?P<env_var_name>[A-Za-z0-9_]+)"),
 ]
 
-TMTESTNET_HOME = os.environ.get("TMTESTNET_HOME", "~/.tmtestnet")
+TMTEST_HOME = os.environ.get("TMTEST_HOME", "~/.tmtestkit")
 
 # -----------------------------------------------------------------------------
 #
@@ -260,12 +260,68 @@ def tmtest(cfg_file, command, subcommand, **kwargs) -> int:
         logger.exception(e)
         return 1
 
+    fn = None
+
+    if command == "network":
+        if subcommand == "deploy":
+            fn = network_deploy
+    #     elif subcommand == "destroy":
+    #         fn = network_destroy
+    #     elif subcommand == "start":
+    #         fn = network_start
+    #     elif subcommand == "stop":
+    #         fn = network_stop
+    #     elif subcommand == "fetch_logs":
+    #         fn = network_fetch_logs
+    #     elif subcommand == "reset":
+    #         fn = network_reset
+    #     elif subcommand == "info":
+    #         fn = network_info
+    # elif command == "loadtest":
+    #     if subcommand == "start":
+    #         fn = loadtest_start
+    #     elif subcommand == "stop":
+    #         fn = loadtest_stop
+    #     elif subcommand == "destroy":
+    #         fn = loadtest_destroy
+
+    if fn is None:
+        logger.error("Command/sub-command not yet supported: %s %s", command, subcommand)
+        return 1
+    
+    try:
+        fn(cfg, **kwargs)
+    except Exception as e:
+        logger.error("Failed to execute \"%s %s\" for configuration file: %s", command, subcommand, cfg_file)
+        logger.exception(e)
+        return 1
+    
+    return 0
+            
+
 def load_test_config(filename: str) -> TestConfig:
     """Loads the configuration from the given file. Throws an exception if any
     validation fails. On success, returns the configuration."""
 
     # resolve the tmtest home folder path
     tmtest_home = os.path.expanduser(TMTEST_HOME)
+    ensure_path_exists(tmtest_home)
+
+    with open(filename, "rt") as f:
+        cfg_dict = yaml.safe_load(f)
+    
+    if "id" not in cfg_dict:
+        raise Exception("Missing required \"id\" parameter in configuration file")
+
+    config_base_path = os.path.dirname(os.path.abspath(filename))
+    return TestConfig(
+        id=cfg_dict["id"],
+        # monitoring=load_monitoring_config(cfg_dict.get("monitoring", dict())),
+        # abci=load_abci_configs(cfg_dict.get("abci", dict()), config_base_path),
+        # node_groups=load_node_groups_config(cfg_dict.get("node_groups", []), config_base_path, abci_config),
+        # load_tests=load_load_tests_config(cfg_dict.get("load_tests", [])),
+        home=tmtest_home,
+    )
 
 
 def configure_env_var_yaml_loading(fail_on_missing=False):
@@ -306,8 +362,24 @@ def configure_logging(verbose=False):
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG if verbose else logging.INFO)
 
-def get_current_user() -> str:
-    return pwd.getpwuid(os.getuid())[0]
+def ensure_path_exists(path):
+    if not os.path.isdir(path):
+        os.makedirs(path, mode=0o755, exist_ok=True)
+        logger.debug("Created folder: %s", path)
+
+# def get_current_user() -> str:
+#     return pwd.getpwuid(os.getuid())[0]
+
+# -----------------------------------------------------------------------------
+#
+#   Configuration
+#
+# -----------------------------------------------------------------------------
+
+TestConfig = namedtuple("TestConfig",
+    ["id", "monitoring", "abci", "node_groups", "load_tests", "home", "tendermint_binaries"],
+    defaults=[None, None, dict(), OrderedDict(), OrderedDict(), TMTEST_HOME, dict()],
+)
 
 
 if __name__ == "__main__":
