@@ -242,6 +242,24 @@ ENV_VAR_MATCHERS = [
 
 TMTEST_HOME = os.environ.get("TMTEST_HOME", "~/.tmtestkit")
 
+NODE_PUB_IPS_FILE = "./pub_ips.txt"
+NODE_PRI_IPS_FILE = "./pri_ips.txt"
+
+# -----------------------------------------------------------------------------
+#
+#   Configuration
+#
+# -----------------------------------------------------------------------------
+
+TestConfig = namedtuple("TestConfig",
+    ["id", "bin","monitoring", "abci", "node_groups", "load_tests", "home", "tendermint_binaries"],
+    defaults=[None, None, None, dict(), OrderedDict(), OrderedDict(), TMTEST_HOME, dict()],
+)
+
+TendermintNodeConfig = namedtuple("TendermintNodeConfig",
+    ["config_path", "config", "priv_validator_key", "node_key", "peer_id"],
+)
+
 # -----------------------------------------------------------------------------
 #
 #   Core functionality
@@ -297,7 +315,87 @@ def tmtest(cfg_file, command, subcommand, **kwargs) -> int:
         return 1
     
     return 0
-            
+
+def network_deploy(
+    cfg: "TestConfig",
+    priv_key_path,
+    keep_existing_tendermint_config: bool = False,
+    **kwargs,
+):
+    """Deploys the network according to the given configuration."""
+
+    test_home = os.path.join(cfg.home, cfg.id)
+
+    deploy_tendermint_network(
+        cfg,
+        priv_key_path=priv_key_path,
+        keep_existing_tendermint_config=keep_existing_tendermint_config,
+        **kwargs,
+    )
+
+def deploy_tendermint_network(
+    cfg: "TestConfig",
+    priv_key_path: bool = False,
+    keep_existing_tendermint_config: bool = False,
+    **kwargs,
+):
+    """Install Tendermint on all target nodes."""
+    if not os.path.exists(priv_key_path):
+        raise Exception("Cannot find private key: %s" % priv_key_path)
+
+    node_ips = load_node_ips()
+    # 1. generate tendermint testnet config
+    config_path = os.path.join(cfg.home, "tendermint", "config")
+    tendermint_generate_config(
+        config_path,
+        len(node_ips),
+        keep_existing_tendermint_config,
+    )
+
+    binary_path = os.path.join(cfg.home, "bin")
+
+
+def tendermint_generate_config(
+    workdir: str,
+    validators: int,
+    keep_existing: bool,
+) -> List[TendermintNodeConfig]:
+    """Generates the Tendermint network configureation for a testnet."""
+    logger.info("Genrating Tendermint configuration for testnet")
+    ensure_path_exists(workdir)
+    cmd = [
+        "tendermint", "testnet",
+        "--v" "%d" % validators,
+        "--populate-persistent-peers=false", # we'll handle this ourselves later
+        "--o", workdir,
+    ]
+    sh(cmd)
+    return tendermint_load_nodes_config(workdir, validators)
+
+def tendermint_load_nodes_config(base_path: str, node_count: int) -> List[TendermintNodeConfig]:
+    """Loads the relevant Tendermint node configuration for all nodes in the given base path."""
+    logger.debug("Loading Tendermint testnet configuration for %d nodes from %s", node_count, base_path)
+    result = []
+    for i in range(node_count):
+        node_id = "node%d" % i
+
+
+def load_node_ips():
+    node_ips = dict()
+    pub_f = open(NODE_PUB_IPS_FILE, "r")
+    pub_ips = []
+    for item in pub_f.readlines():
+        pub_ips.append(item.strip())
+    pub_f.close()
+    pri_f = open(NODE_PRI_IPS_FILE, "r")
+    pri_ips = []
+    for itme in pri_f.readlines():
+        pri_ips.append(item.strip())
+    node_ips['pub'] = pub_ips
+    node_ips['pri'] = pri_ips
+
+    return node_ips
+
 
 def load_test_config(filename: str) -> TestConfig:
     """Loads the configuration from the given file. Throws an exception if any
@@ -344,6 +442,35 @@ def make_envvar_constructor(fail_on_missing=False):
         raise Exception("Internal error: environment variable matching algorithm failed")
     return envvar_constructor
 
+
+def ensure_path_exists(path):
+    if not os.path.isdir(path):
+        os.makedirs(path, mode=0o755, exist_ok=True)
+        logger.debug("Created folder: %s", path)
+
+# def get_current_user() -> str:
+#     return pwd.getpwuid(os.getuid())[0]
+
+# -----------------------------------------------------------------------------
+#
+#   Utilities
+#
+# -----------------------------------------------------------------------------
+
+def sh(cmd):
+    logger.info("Executing command: %s" % " ".join(cmd))
+    with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as p:
+        print("")
+        for line in p.stdout:
+            print(line.decode("utf-8").rstrip())
+        while p.poll() is None:
+            time.sleep(1)
+        print("")
+    
+        if p.returncode != 0:
+            raise Exception("Process failed with return code %d" % p.returncode)
+
+
 def configure_logging(verbose=False):
     """Supercharge our logger."""
     handler = colorlog.StreamHandler()
@@ -361,26 +488,6 @@ def configure_logging(verbose=False):
     )
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG if verbose else logging.INFO)
-
-def ensure_path_exists(path):
-    if not os.path.isdir(path):
-        os.makedirs(path, mode=0o755, exist_ok=True)
-        logger.debug("Created folder: %s", path)
-
-# def get_current_user() -> str:
-#     return pwd.getpwuid(os.getuid())[0]
-
-# -----------------------------------------------------------------------------
-#
-#   Configuration
-#
-# -----------------------------------------------------------------------------
-
-TestConfig = namedtuple("TestConfig",
-    ["id", "monitoring", "abci", "node_groups", "load_tests", "home", "tendermint_binaries"],
-    defaults=[None, None, dict(), OrderedDict(), OrderedDict(), TMTEST_HOME, dict()],
-)
-
 
 if __name__ == "__main__":
     main()

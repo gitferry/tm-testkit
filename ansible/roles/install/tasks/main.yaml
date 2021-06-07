@@ -1,0 +1,13 @@
+# Playbook for helping to install Tendermint on remote servers
+
+- name: Sync the service binary across to the servers
+  synchronize:
+    src: "{{ bin_path }}"
+    dest: "{{ dest_path }}"
+
+- name: Ensure correct service binary permissiones
+  file:
+    path: "{{ dest_path }}"
+    mode: 0755
+    owner: "{{ user }}"
+    group: "{{ service }}"
