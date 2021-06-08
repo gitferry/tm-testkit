@@ -59,11 +59,10 @@ abci:
 # The entry node_group_templates is not actually parsed - what's more important
 # here is to note that PyYAML supports YAML anchors and aliases, which
 # allow you to define templates in your YAML files.
-node_group_templates:
-  validator: &validator_template
+validators:
     # If you want to deploy an official release of Tendermint, just specify
     # a version number here and its binary will be deployed from GitHub.
-    binary: 
+    binary: /path/to/binary
 
     # What's the initial state of the Tendermint service? Can be "started" or
     # "stopped".
@@ -85,13 +84,9 @@ node_group_templates:
     # generating configuration for all of the nodes in this sub-network.
     config_template: ./my-validators-config.toml
 
-    # The group name(s) for nodes to consider as seeds
-    use_seeds:
-      - my_seeds
-
     # To prepopulate persistent peers' addresses, specify a list of group
     # names here. Can specify this group's own name here.
-    #persistent_peers:
+    persistent_peers:
     #  - my_validators
 
 # A mapping of named sub-groups of nodes within the desired test network

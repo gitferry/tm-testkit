@@ -252,13 +252,39 @@ NODE_PRI_IPS_FILE = "./pri_ips.txt"
 # -----------------------------------------------------------------------------
 
 TestConfig = namedtuple("TestConfig",
-    ["id", "bin","monitoring", "abci", "node_groups", "load_tests", "home", "tendermint_binaries"],
-    defaults=[None, None, None, dict(), OrderedDict(), OrderedDict(), TMTEST_HOME, dict()],
+    ["id", "bin","monitoring", "validators", "abci", "load_tests", "home", "tendermint_binaries"],
+    defaults=[None, None, None, dict(), dict(), OrderedDict(), TMTEST_HOME, dict()],
 )
 
 TendermintNodeConfig = namedtuple("TendermintNodeConfig",
     ["config_path", "config", "priv_validator_key", "node_key", "peer_id"],
 )
+
+TendermintNodePrivValidatorKey = namedtuple("TendermintNodePrivValidatorKey",
+    ["address", "pub_key", "priv_key"],
+)
+
+TendermintNodeKey = namedtuple("TendermintNodeKey", 
+    ["type", "value"],
+)
+
+def load_key(d, ctx) -> TendermintNodeKey:
+    if not isinstance(d, dict):
+        raise Exception("Expected key to consist of key/value pairs (%s)" % ctx)
+    return TendermintNodeKey(**d)
+
+def load_tendermint_priv_validator_key(path: str) -> TendermintNodePrivValidatorKey:
+    with open(path, "rt") as f:
+        priv_val_key = json.load(f)
+    for field in ["address", "pub_key", "priv_key"]:
+        if field not in priv_val_key:
+            raise Exception("Missing field \"%s\" in %s" % (field, path))
+    cfg = {
+        "address": priv_val_key["address"],
+        "pub_key": load_key(priv_val_key["pub_key"], "pub_key in %s" % path),
+        "priv_key": load_key(priv_val_key["priv_key"], "priv_key in %s" % path),
+    }
+    return TendermintNodePrivValidatorKey(**cfg)
 
 # -----------------------------------------------------------------------------
 #
@@ -318,7 +344,6 @@ def tmtest(cfg_file, command, subcommand, **kwargs) -> int:
 
 def network_deploy(
     cfg: "TestConfig",
-    priv_key_path,
     keep_existing_tendermint_config: bool = False,
     **kwargs,
 ):
@@ -328,40 +353,52 @@ def network_deploy(
 
     deploy_tendermint_network(
         cfg,
-        priv_key_path=priv_key_path,
         keep_existing_tendermint_config=keep_existing_tendermint_config,
         **kwargs,
     )
 
 def deploy_tendermint_network(
     cfg: "TestConfig",
-    priv_key_path: bool = False,
     keep_existing_tendermint_config: bool = False,
     **kwargs,
 ):
     """Install Tendermint on all target nodes."""
-    if not os.path.exists(priv_key_path):
-        raise Exception("Cannot find private key: %s" % priv_key_path)
 
     node_ips = load_node_ips()
     # 1. generate tendermint testnet config
     config_path = os.path.join(cfg.home, "tendermint", "config")
-    tendermint_generate_config(
+    peers = tendermint_generate_config(
         config_path,
         len(node_ips),
         keep_existing_tendermint_config,
+        node_ips,
     )
 
     binary_path = os.path.join(cfg.home, "bin")
+    # deploy all nodes configuration and start the network
+    ansible_deploy_tendermint(
+        cfg,
+        binary_path,
+        peers,
+    )
 
 
 def tendermint_generate_config(
     workdir: str,
     validators: int,
     keep_existing: bool,
+    node_ips: list,
 ) -> List[TendermintNodeConfig]:
     """Generates the Tendermint network configureation for a testnet."""
     logger.info("Genrating Tendermint configuration for testnet")
+    if os.path.isdir(workdir):
+        if keep_existing:
+            logger.info("Configuration already exists, keeping existing configuration")
+            return tendermint_load_peers(workdir, validators)
+        
+        logger.info("Removing existing configuration directory: %s", workdir)
+        shutil.rmtree(workdir)
+
     ensure_path_exists(workdir)
     cmd = [
         "tendermint", "testnet",
@@ -370,14 +407,31 @@ def tendermint_generate_config(
         "--o", workdir,
     ]
     sh(cmd)
-    return tendermint_load_nodes_config(workdir, validators)
+    return tendermint_load_peers(workdir, validators, node_ips)
 
-def tendermint_load_nodes_config(base_path: str, node_count: int) -> List[TendermintNodeConfig]:
+def tendermint_load_peers(base_path: str, node_count: int, node_ips: list) -> List[str]:
     """Loads the relevant Tendermint node configuration for all nodes in the given base path."""
     logger.debug("Loading Tendermint testnet configuration for %d nodes from %s", node_count, base_path)
     result = []
     for i in range(node_count):
         node_id = "node%d" % i
+        host_cfg_path = os.path.join(base_path, node_id, "config")
+        config_file = os.path.join(host_cfg_path, "config.toml")
+        config = load_toml_config(config_file)
+        priv_val_key = load_tendermint_priv_validator_key(os.path.join(host_cfg_path, "priv_validator_key.json"))
+        node_key = load_tendermint_node_key(os.path.join(host_cfg_path, "node_key.json"))
+        result.append(
+            tendermint_peer_id(
+                node_ips[i],
+                ed25519_pub_key_to_id(
+                    get_ed25519_pub_key(
+                        node_key.value,
+                        "node with configuration at %s" % config_file,
+                    ),
+                ),
+            ),
+        )
+    return result
 
 
 def load_node_ips():
@@ -389,7 +443,7 @@ def load_node_ips():
     pub_f.close()
     pri_f = open(NODE_PRI_IPS_FILE, "r")
     pri_ips = []
-    for itme in pri_f.readlines():
+    for item in pri_f.readlines():
         pri_ips.append(item.strip())
     node_ips['pub'] = pub_ips
     node_ips['pri'] = pri_ips
@@ -453,6 +507,49 @@ def ensure_path_exists(path):
 
 # -----------------------------------------------------------------------------
 #
+#   Network Management
+#
+# -----------------------------------------------------------------------------
+
+def ansible_deploy_tendermint(
+    cfg: TestConfig,
+    binary_path: str,
+    peers: List[str],
+):
+    workdir = os.path.join(cfg.home, "tendermint")
+    if not os.path.isdir(workdir):
+        raise Exception("Missing working directory: %s", workdir)
+
+    logger.info("Generating Ansible configuration for all nodes")
+    extra_vars = {
+        "service_name": "tendermint",
+        "service_user": "lanpo",
+        "service_group": "tendermint",
+        "service_user_shell": "/bin/bash",
+        "service_state": cfg.service_state,
+        "service_template": "tendermint.service.jinja2",
+        "service_desc": "Tendermint",
+        "service_exec_cmd": "/usr/bin/tendermint node",
+        "src_binary": binary_path,
+        "dest_binary": "/usr/bin/tendermint",
+        "src_config_path": os.path.join(workdir, "config"),
+    }
+
+    inventory_file = NODE_PUB_IPS_FILE
+    extra_vars_file = os.path.join(workdir, "extra-vars.yaml")
+    save_yaml_config(extra_vars_file, extra_vars)
+    
+    logger.info("Deploying Tendermint network")
+    sh([
+        "ansible-playbook",
+        "-i", inventory_file,
+        "-e", "@%s" % extra_vars_file,
+        os.path.join("ansible","deploy.yaml"),
+    ])
+    logger.info("Tendermint network successfully deployed")
+
+# -----------------------------------------------------------------------------
+#
 #   Utilities
 #
 # -----------------------------------------------------------------------------
@@ -488,6 +585,46 @@ def configure_logging(verbose=False):
     )
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+
+def save_yaml_config(filename, cfg):
+    with open(filename, "wt") as f:
+        yaml.safe_dump(cfg, f)
+    logger.debug("Wrote configuration to %s", filename)
+
+def load_toml_config(filename):
+    logger.debug("Loading TOML configuration file: %s", filename)
+    with open(filename, "rt") as f:
+        return toml.load(f)
+
+def load_tendermint_node_key(filename: str) -> TendermintNodeKey:
+    """Loads the node's private key from the given file."""
+    with open(filename, "rt") as f:
+        node_key = json.load(f)
+    if "priv_key" not in node_key:
+        raise Exception("Invalid node key format in file: %s" % filename)
+    if node_key["priv_key"].get("type", "") != "tendermint/PrivKeyEd25519":
+        raise Exception("The only node key type currently supported is tendermint/PrivKeyEd25519: %s" % filename)
+    return TendermintNodeKey(**node_key["priv_key"])
+
+def get_ed25519_pub_key(priv_key: str, ctx: str) -> bytes:
+    """Returns the public key associated with the given private key. Assumes
+    that the priv_key is provided in base64, and the latter half of the private
+    key is the public key."""
+    priv_key_bytes = base64.b64decode(priv_key)
+    if len(priv_key_bytes) != 64:
+        raise Exception("Invalid ed25519 private key: %s (%s)" % (priv_key, ctx))
+    pub_key_bytes = priv_key_bytes[32:]
+    if sum(pub_key_bytes) == 0:
+        raise Exception("Public key bytes in ed25519 private key not initialized: %s (%s)" % (priv_key, ctx))
+    return pub_key_bytes
+
+def tendermint_peer_id(host: str, address: str = None) -> str:
+    return ("%s@%s:26656" % (address, host)) if address is not None else ("%s:26656" % host)
+
+def ed25519_pub_key_to_id(pub_key: bytes) -> str:
+    """Converts the given ed25519 public key into a Tendermint-compatible ID."""
+    sum_truncated = hashlib.sha256(pub_key).digest()[:20]
+    return "".join(["%.2x" % b for b in sum_truncated])
 
 if __name__ == "__main__":
     main()
