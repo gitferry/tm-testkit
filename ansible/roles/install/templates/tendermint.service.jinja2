@@ -1,0 +1,9 @@
+[Unit]
+Description={{ service }}
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+Restart=on-failure
+User={{ user }}
+Group={{ service }}

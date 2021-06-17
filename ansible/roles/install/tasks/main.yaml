@@ -11,3 +11,9 @@
     mode: 0755
     owner: "{{ user }}"
     group: "{{ service }}"
+
+- name: Delete any existing Tendermint configuration/data
+  file: "path=/home/{{ user }}/.tendermint state=absent"
+  when: copy_node_config == True
+
+- name: Copy the Tendermint node
