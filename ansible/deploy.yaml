@@ -11,4 +11,4 @@
     copy_node_config: yes
     truncate_logs: no
   roles:
-    - tendermint
+    - install

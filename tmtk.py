@@ -268,6 +268,11 @@ TendermintNodeKey = namedtuple("TendermintNodeKey",
     ["type", "value"],
 )
 
+AnsibleInventoryEntry = namedtuple("AnsibleInventoryEntry",
+    ["alias", "ansible_host", "ansible_port", "node_id"],
+    defaults=[None, None, None, None],
+)
+
 def load_key(d, ctx) -> TendermintNodeKey:
     if not isinstance(d, dict):
         raise Exception("Expected key to consist of key/value pairs (%s)" % ctx)
@@ -369,7 +374,7 @@ def deploy_tendermint_network(
     config_path = os.path.join(cfg.home, "tendermint", "config")
     peers = tendermint_generate_config(
         config_path,
-        len(node_ips),
+        len(node_ips['pub']),
         keep_existing_tendermint_config,
         node_ips,
     )
@@ -402,7 +407,7 @@ def tendermint_generate_config(
     ensure_path_exists(workdir)
     cmd = [
         "tendermint", "testnet",
-        "--v" "%d" % validators,
+        "--v", "%d" % validators,
         "--populate-persistent-peers=false", # we'll handle this ourselves later
         "--o", workdir,
     ]
@@ -411,7 +416,7 @@ def tendermint_generate_config(
 
 def tendermint_load_peers(base_path: str, node_count: int, node_ips: list) -> List[str]:
     """Loads the relevant Tendermint node configuration for all nodes in the given base path."""
-    logger.debug("Loading Tendermint testnet configuration for %d nodes from %s", node_count, base_path)
+    logger.info("Loading Tendermint testnet configuration for %d nodes from %s", node_count, base_path)
     result = []
     for i in range(node_count):
         node_id = "node%d" % i
@@ -422,7 +427,7 @@ def tendermint_load_peers(base_path: str, node_count: int, node_ips: list) -> Li
         node_key = load_tendermint_node_key(os.path.join(host_cfg_path, "node_key.json"))
         result.append(
             tendermint_peer_id(
-                node_ips[i],
+                node_ips['pub'][i],
                 ed25519_pub_key_to_id(
                     get_ed25519_pub_key(
                         node_key.value,
@@ -526,16 +531,35 @@ def ansible_deploy_tendermint(
         "service_user": "lanpo",
         "service_group": "tendermint",
         "service_user_shell": "/bin/bash",
-        "service_state": cfg.service_state,
+        "service_state": "started",
         "service_template": "tendermint.service.jinja2",
         "service_desc": "Tendermint",
         "service_exec_cmd": "/usr/bin/tendermint node",
         "src_binary": binary_path,
         "dest_binary": "/usr/bin/tendermint",
         "src_config_path": os.path.join(workdir, "config"),
+        "ansible_sudo_pass": "Gwen930812",
     }
 
-    inventory_file = NODE_PUB_IPS_FILE
+    inventory = OrderedDict()
+    inventory["tendermint"] = []
+    i = 0
+    for peer in peers:
+        node_id = "node%d" % i
+        inventory["tendermint"].append(
+            AnsibleInventoryEntry(
+                alias="%s" % node_id,
+                ansible_host = peer.split("@")[1].split(":")[0],
+                ansible_port = peer.split("@")[1].split(":")[1],
+                node_id = node_id,
+            ),
+        )
+        i += 1
+
+
+    inventory_file = os.path.join(workdir, "inventory")
+    save_ansible_inventory(inventory_file, inventory)
+    print(inventory["tendermint"])
     extra_vars_file = os.path.join(workdir, "extra-vars.yaml")
     save_yaml_config(extra_vars_file, extra_vars)
     
@@ -590,6 +614,36 @@ def save_yaml_config(filename, cfg):
     with open(filename, "wt") as f:
         yaml.safe_dump(cfg, f)
     logger.debug("Wrote configuration to %s", filename)
+
+def save_ansible_inventory(filename: str, inventory: OrderedDictType[str, List]):
+    """Writes the given inventory structure to an Ansible inventory file.
+    The `inventory` variable is an ordered mapping of group names to lists of
+    hostnames (plain strings) or AnsibleInventoryEntry instances.
+
+    If you use any AnsibleInventoryEntry instances in your inventory lists, the
+    `alias` property is required.
+    """
+    with open(filename, "wt") as f:
+        for group_name, entries in inventory.items():
+            f.write("[%s]\n" % group_name)
+            for entry in entries:
+                if isinstance(entry, str):
+                    f.write("%s\n" % entry)
+                elif isinstance(entry, AnsibleInventoryEntry):
+                    if entry.alias is None:
+                        raise Exception("Missing alias for Ansible inventory entry in group: %s" % group_name)
+                    line = "%s" % entry.alias
+                    if entry.ansible_host is not None:
+                        line += " ansible_host=%s" % entry.ansible_host
+                    if entry.ansible_port is not None:
+                        line += " ansible_port=%s" % entry.ansible_port
+                    if entry.node_id is not None:
+                        line += " node_id=%s" % entry.node_id
+                    f.write("%s\n" % line)
+                else:
+                    raise Exception("Unknown type for Ansible inventory entry: %s" % entry)
+                    
+            f.write("\n")
 
 def load_toml_config(filename):
     logger.debug("Loading TOML configuration file: %s", filename)
