@@ -269,8 +269,8 @@ TendermintNodeKey = namedtuple("TendermintNodeKey",
 )
 
 AnsibleInventoryEntry = namedtuple("AnsibleInventoryEntry",
-    ["alias", "ansible_host", "ansible_port", "node_id"],
-    defaults=[None, None, None, None],
+    ["alias", "ansible_host", "node_id"],
+    defaults=[None, None, None],
 )
 
 def load_key(d, ctx) -> TendermintNodeKey:
@@ -535,10 +535,10 @@ def ansible_deploy_tendermint(
         "service_template": "tendermint.service.jinja2",
         "service_desc": "Tendermint",
         "service_exec_cmd": "/usr/bin/tendermint node",
-        "src_binary": binary_path,
-        "dest_binary": "/usr/bin/tendermint",
+        "src_binary": "/Users/lanpo/go/bin/tendermint",
+        "dest_binary": "/usr/bin",
         "src_config_path": os.path.join(workdir, "config"),
-        "ansible_sudo_pass": "Gwen930812",
+        "ansible_sudo_pass": "Luciguy940208",
     }
 
     inventory = OrderedDict()
@@ -550,7 +550,6 @@ def ansible_deploy_tendermint(
             AnsibleInventoryEntry(
                 alias="%s" % node_id,
                 ansible_host = peer.split("@")[1].split(":")[0],
-                ansible_port = peer.split("@")[1].split(":")[1],
                 node_id = node_id,
             ),
         )
@@ -559,7 +558,6 @@ def ansible_deploy_tendermint(
 
     inventory_file = os.path.join(workdir, "inventory")
     save_ansible_inventory(inventory_file, inventory)
-    print(inventory["tendermint"])
     extra_vars_file = os.path.join(workdir, "extra-vars.yaml")
     save_yaml_config(extra_vars_file, extra_vars)
     
@@ -635,8 +633,6 @@ def save_ansible_inventory(filename: str, inventory: OrderedDictType[str, List])
                     line = "%s" % entry.alias
                     if entry.ansible_host is not None:
                         line += " ansible_host=%s" % entry.ansible_host
-                    if entry.ansible_port is not None:
-                        line += " ansible_port=%s" % entry.ansible_port
                     if entry.node_id is not None:
                         line += " node_id=%s" % entry.node_id
                     f.write("%s\n" % line)

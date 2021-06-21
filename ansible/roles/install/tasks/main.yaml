@@ -21,7 +21,7 @@
     group: "{{ service_group }}"
 
 - name: Sync the service binary across to the server
-  synchronize:
+  copy:
     src: "{{ src_binary }}"
     dest: "{{ dest_binary }}"
 
@@ -29,8 +29,8 @@
   file:
     path: "{{ dest_binary }}"
     mode: 0755
-    owner: "root"
-    group: "root"
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
 
 - name: Delete any existing Tendermint configuration/data
   file: "path=/home/{{ service_user }}/.tendermint state=absent"

@@ -1,5 +1,5 @@
 [Unit]
-Description={{ service }}
+Description={{ service_name }}
 Requires=network-online.target
 After=network-online.target
 
@@ -17,7 +17,7 @@ LimitNOFILE=65536
 LimitMEMLOCK=infinity
 StandardOutput=syslog
 StandardError=syslog
-SyslogIdentifier={{ service_name'] }}
+SyslogIdentifier={{ service_name }}
 
 [Install]
 WantedBy=multi-user.target
