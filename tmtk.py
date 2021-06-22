@@ -323,8 +323,8 @@ def tmtest(cfg_file, command, subcommand, **kwargs) -> int:
     #         fn = network_destroy
         elif subcommand == "start":
             fn = network_start
-    #     elif subcommand == "stop":
-    #         fn = network_stop
+        elif subcommand == "stop":
+            fn = network_stop
     #     elif subcommand == "fetch_logs":
     #         fn = network_fetch_logs
     #     elif subcommand == "reset":
@@ -369,6 +369,9 @@ def network_deploy(
 
 def network_start(cfg: "TestConfig", **kwargs):
     network_state(cfg, "started", **kwargs)
+
+def network_stop(cfg: "TestConfig", **kwargs):
+    network_state(cfg, "stopped", **kwargs)
 
 def network_state(
     cfg: "TestConfig",
