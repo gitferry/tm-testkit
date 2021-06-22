@@ -71,7 +71,7 @@ validators:
     # Leaving this out assumes you're either using a built-in ABCI
     # application (like the kvstore) or your binary is built using Tendermint
     # as a library.
-    abci: myabciapp
+    abci:
 
     # Are these nodes to be validators? (Default: yes)
     validators: yes

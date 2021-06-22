@@ -256,6 +256,11 @@ TestConfig = namedtuple("TestConfig",
     defaults=[None, None, None, dict(), dict(), OrderedDict(), TMTEST_HOME, dict()],
 )
 
+TestNodeRef = namedtuple("TestNodeRef",
+    ["id"],
+    defaults=[None],
+)
+
 TendermintNodeConfig = namedtuple("TendermintNodeConfig",
     ["config_path", "config", "priv_validator_key", "node_key", "peer_id"],
 )
@@ -371,6 +376,14 @@ def network_state(
     **kwargs,
 ):
     test_home = os.path.join(cfg.home, cfg.id)
+
+    logger.info("Attempting to change state of network component(s): %s", state)
+    ansible_set_tendermint_nodes_state(
+        os.path.join(test_home, "tendermint"),
+        state,
+    )
+    logger.info("Successfully changed state of network component(s): %s", state)
+
 
 def deploy_tendermint_network(
     cfg: "TestConfig",
@@ -579,7 +592,7 @@ def ansible_deploy_tendermint(
         "service_state": "started",
         "service_template": "tendermint.service.jinja2",
         "service_desc": "Tendermint",
-        "service_exec_cmd": "/usr/bin/tendermint node",
+        "service_exec_cmd": "/usr/bin/tendermint node --mode validator --proxy-app=kvstore",
         "src_binary": "/Users/lanpo/go/bin/tendermint",
         "dest_binary": "/usr/bin",
         "src_config_path": os.path.join(workdir, "config"),
@@ -615,16 +628,26 @@ def ansible_deploy_tendermint(
     ])
     logger.info("Tendermint network successfully deployed")
 
-# def ansible_set_tendermint_nodes_state(
-#     workdir: str,
-#     state: str,
-# ):
-#     """Attmpts to collect all nodes' details from the given refernces list
-#     and ensure that they are all set to the desired state (Ansible state)."""
-#     valid_states = {"started", "stopped", "restarted"}
-#     if state not in valid_states:
-#         raise Exception("Desired service state must be one of: %s", ",".join(valid_states))
-#     state_verb = "starting" if state in {"started", "restarted"} else "stopping"
+def ansible_set_tendermint_nodes_state(
+    workdir: str,
+    state: str,
+):
+    """Attmpts to collect all nodes' details from the given refernces list
+    and ensure that they are all set to the desired state (Ansible state)."""
+    valid_states = {"started", "stopped", "restarted"}
+    if state not in valid_states:
+        raise Exception("Desired service state must be one of: %s", ",".join(valid_states))
+    state_verb = "starting" if state in {"started", "restarted"} else "stopping"
+
+    inventory_file = os.path.join(workdir, "inventory")
+    logger.info("%s hosts", state_verb.capitalize())
+    sh([
+        "ansible-playbook",
+        "-i", inventory_file,
+        "-e", "state=%s", state,
+        "-e", "ansible_sudo_pass=Luciguy940208",
+    ])
+    logger.info("Hosts' state successfully set to \"%s\"", state)
 
 # -----------------------------------------------------------------------------
 #
