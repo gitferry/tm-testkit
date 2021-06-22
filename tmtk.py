@@ -316,8 +316,8 @@ def tmtest(cfg_file, command, subcommand, **kwargs) -> int:
             fn = network_deploy
     #     elif subcommand == "destroy":
     #         fn = network_destroy
-    #     elif subcommand == "start":
-    #         fn = network_start
+        elif subcommand == "start":
+            fn = network_start
     #     elif subcommand == "stop":
     #         fn = network_stop
     #     elif subcommand == "fetch_logs":
@@ -362,6 +362,16 @@ def network_deploy(
         **kwargs,
     )
 
+def network_start(cfg: "TestConfig", **kwargs):
+    network_state(cfg, "started", **kwargs)
+
+def network_state(
+    cfg: "TestConfig",
+    state: str,
+    **kwargs,
+):
+    test_home = os.path.join(cfg.home, cfg.id)
+
 def deploy_tendermint_network(
     cfg: "TestConfig",
     keep_existing_tendermint_config: bool = False,
@@ -379,6 +389,8 @@ def deploy_tendermint_network(
         node_ips,
     )
 
+    tendermint_finalize_config(cfg, peers)
+
     binary_path = os.path.join(cfg.home, "bin")
     # deploy all nodes configuration and start the network
     ansible_deploy_tendermint(
@@ -386,6 +398,33 @@ def deploy_tendermint_network(
         binary_path,
         peers,
     )
+
+def tendermint_finalize_config(cfg: "TestConfig", peers: List[TendermintNodeConfig]):
+    genesis_doc = {
+        "genesis_time": pytz.utc.localize(datetime.datetime.utcnow()).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+        "chain_id": cfg.id,
+        "validators": [],
+        "app_hash": "",
+    }
+
+    persistent_peers = unique_peer_ids(peers)
+
+    for node_cfg in peers:
+        _cfg = deepcopy(node_cfg.config)
+        _cfg["p2p"]["persistent_peers"] = ",".join(persistent_peers - {node_cfg.peer_id})
+        save_toml_config(os.path.join(node_cfg.config_path, "config.toml"), _cfg)
+
+        genesis_doc["validators"].append({
+            "address": node_cfg.priv_validator_key.address,
+            "pub_key": {
+                "type": node_cfg.priv_validator_key.pub_key.type,
+                "value": node_cfg.priv_validator_key.pub_key.value,
+            },
+            "name": node_cfg.config["moniker"],
+        })
+        node_genesis_file = os.path.join(node_cfg.config_path, "genesis.json")
+        with open(node_genesis_file, "wt") as f:
+            json.dump(genesis_doc, f, indent=2)
 
 
 def tendermint_generate_config(
@@ -414,7 +453,7 @@ def tendermint_generate_config(
     sh(cmd)
     return tendermint_load_peers(workdir, validators, node_ips)
 
-def tendermint_load_peers(base_path: str, node_count: int, node_ips: list) -> List[str]:
+def tendermint_load_peers(base_path: str, node_count: int, node_ips: list) -> List[TendermintNodeConfig]:
     """Loads the relevant Tendermint node configuration for all nodes in the given base path."""
     logger.info("Loading Tendermint testnet configuration for %d nodes from %s", node_count, base_path)
     result = []
@@ -426,12 +465,18 @@ def tendermint_load_peers(base_path: str, node_count: int, node_ips: list) -> Li
         priv_val_key = load_tendermint_priv_validator_key(os.path.join(host_cfg_path, "priv_validator_key.json"))
         node_key = load_tendermint_node_key(os.path.join(host_cfg_path, "node_key.json"))
         result.append(
-            tendermint_peer_id(
-                node_ips['pub'][i],
-                ed25519_pub_key_to_id(
-                    get_ed25519_pub_key(
-                        node_key.value,
-                        "node with configuration at %s" % config_file,
+            TendermintNodeConfig(
+                config_path=host_cfg_path,
+                config=config,
+                priv_validator_key=priv_val_key,
+                node_key=node_key,
+                peer_id=tendermint_peer_id(
+                    node_ips['pub'][i],
+                    ed25519_pub_key_to_id(
+                        get_ed25519_pub_key(
+                            node_key.value,
+                            "node with configuration at %s" % config_file,
+                        ),
                     ),
                 ),
             ),
@@ -519,7 +564,7 @@ def ensure_path_exists(path):
 def ansible_deploy_tendermint(
     cfg: TestConfig,
     binary_path: str,
-    peers: List[str],
+    peers: List[TendermintNodeConfig],
 ):
     workdir = os.path.join(cfg.home, "tendermint")
     if not os.path.isdir(workdir):
@@ -549,7 +594,7 @@ def ansible_deploy_tendermint(
         inventory["tendermint"].append(
             AnsibleInventoryEntry(
                 alias="%s" % node_id,
-                ansible_host = peer.split("@")[1].split(":")[0],
+                ansible_host = peer.peer_id.split("@")[1].split(":")[0],
                 node_id = node_id,
             ),
         )
@@ -569,6 +614,17 @@ def ansible_deploy_tendermint(
         os.path.join("ansible","deploy.yaml"),
     ])
     logger.info("Tendermint network successfully deployed")
+
+# def ansible_set_tendermint_nodes_state(
+#     workdir: str,
+#     state: str,
+# ):
+#     """Attmpts to collect all nodes' details from the given refernces list
+#     and ensure that they are all set to the desired state (Ansible state)."""
+#     valid_states = {"started", "stopped", "restarted"}
+#     if state not in valid_states:
+#         raise Exception("Desired service state must be one of: %s", ",".join(valid_states))
+#     state_verb = "starting" if state in {"started", "restarted"} else "stopping"
 
 # -----------------------------------------------------------------------------
 #
@@ -607,6 +663,11 @@ def configure_logging(verbose=False):
     )
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+
+def save_toml_config(filename, cfg):
+    with open(filename, "wt") as f:
+        toml.dump(cfg, f)
+    logger.debug("Wrote configuration to %s", filename)
 
 def save_yaml_config(filename, cfg):
     with open(filename, "wt") as f:
@@ -675,6 +736,14 @@ def ed25519_pub_key_to_id(pub_key: bytes) -> str:
     """Converts the given ed25519 public key into a Tendermint-compatible ID."""
     sum_truncated = hashlib.sha256(pub_key).digest()[:20]
     return "".join(["%.2x" % b for b in sum_truncated])
+
+def unique_peer_ids(
+    peers: List[TendermintNodeConfig],
+) -> Set[str]:
+    result = set()
+    for peer in peers:
+        result.add(peer.peer_id)
+    return result
 
 if __name__ == "__main__":
     main()
