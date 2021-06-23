@@ -1,13 +1,5 @@
 # Playbook for helping to deploy Tendermint
 ---
-- name: Check if service is present
-  stat: "path=/etc/systemd/system/{{ service_name }}.service"
-  register: svc
-
-- name: Stop service if present
-  service: "name={{ service_name }} state=stopped"
-  when: svc.stat.exists
-
 - name: Ensure service group exists
   group:
     name: "{{ service_group }}"
@@ -29,8 +21,8 @@
   file:
     path: "{{ dest_binary }}"
     mode: 0755
-    owner: "{{ service_user }}"
-    group: "{{ service_group }}"
+    owner: "root"
+    group: "root"
 
 - name: Delete any existing Tendermint configuration/data
   file: "path=/home/{{ service_user }}/.tendermint state=absent"

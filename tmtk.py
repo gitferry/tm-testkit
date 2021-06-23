@@ -609,9 +609,9 @@ def ansible_deploy_tendermint(
         "service_state": "started",
         "service_template": "tendermint.service.jinja2",
         "service_desc": "Tendermint",
-        "service_exec_cmd": "/usr/bin/tendermint node --mode validator --proxy-app=kvstore",
+        "service_exec_cmd": "/usr/local/bin/tendermint node --mode validator --proxy-app=kvstore",
         "src_binary": "/Users/lanpo/go/bin/tendermint",
-        "dest_binary": "/usr/bin",
+        "dest_binary": "/usr/local/bin",
         "src_config_path": os.path.join(workdir, "config"),
         "ansible_sudo_pass": "Luciguy940208",
     }
