@@ -378,11 +378,9 @@ def network_state(
     state: str,
     **kwargs,
 ):
-    test_home = os.path.join(cfg.home, cfg.id)
-
     logger.info("Attempting to change state of network component(s): %s", state)
     ansible_set_tendermint_nodes_state(
-        os.path.join(test_home, "tendermint"),
+        os.path.join(cfg.home, "tendermint"),
         state,
     )
     logger.info("Successfully changed state of network component(s): %s", state)
@@ -647,8 +645,9 @@ def ansible_set_tendermint_nodes_state(
     sh([
         "ansible-playbook",
         "-i", inventory_file,
-        "-e", "state=%s", state,
+        "-e", "state=%s" % state,
         "-e", "ansible_sudo_pass=Luciguy940208",
+        os.path.join("ansible", "tendermint-state.yaml"),
     ])
     logger.info("Hosts' state successfully set to \"%s\"", state)
 
