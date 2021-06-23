@@ -325,8 +325,8 @@ def tmtest(cfg_file, command, subcommand, **kwargs) -> int:
             fn = network_start
         elif subcommand == "stop":
             fn = network_stop
-    #     elif subcommand == "fetch_logs":
-    #         fn = network_fetch_logs
+        elif subcommand == "fetch_logs":
+            fn = network_fetch_logs
     #     elif subcommand == "reset":
     #         fn = network_reset
     #     elif subcommand == "info":
@@ -384,6 +384,22 @@ def network_state(
         state,
     )
     logger.info("Successfully changed state of network component(s): %s", state)
+
+def network_fetch_logs(
+    cfg: "TestConfig",
+    output_path=None,
+    node_ids=None,
+    **kwargs
+):
+    if output_path is None or len(output_path) == 0:
+        raise Exception("fetch_logs command requires an output path parameter")
+    
+    logger.info("Fetching logs")
+    ansible_fetch_logs(
+        os.path.join(cfg.home, "tendermint"),
+        resolve_relative_path(output_path, os.getcwd()),
+    )
+
 
 
 def deploy_tendermint_network(
@@ -651,6 +667,19 @@ def ansible_set_tendermint_nodes_state(
     ])
     logger.info("Hosts' state successfully set to \"%s\"", state)
 
+def ansible_fetch_logs(
+    workdir: str,
+    output_path: str,
+):
+    inventory_file = os.path.join(workdir, "inventory")
+    sh([
+        "ansible-playbook",
+        "-i", inventory_file,
+        "-e", "local_log_path=%s" % output_path,
+        "-e", "ansible_sudo_pass=Luciguy940208",
+        os.path.join("ansible", "fetch-logs.yaml"),
+    ])
+
 # -----------------------------------------------------------------------------
 #
 #   Utilities
@@ -753,6 +782,11 @@ def get_ed25519_pub_key(priv_key: str, ctx: str) -> bytes:
     if sum(pub_key_bytes) == 0:
         raise Exception("Public key bytes in ed25519 private key not initialized: %s (%s)" % (priv_key, ctx))
     return pub_key_bytes
+
+def resolve_relative_path(path: str, base_path: str) -> str:
+    if os.path.isabs(path):
+        return path
+    return os.path.normpath(os.path.join(base_path, path))
 
 def tendermint_peer_id(host: str, address: str = None) -> str:
     return ("%s@%s:26656" % (address, host)) if address is not None else ("%s:26656" % host)
