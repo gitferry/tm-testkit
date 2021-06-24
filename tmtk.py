@@ -451,6 +451,7 @@ def tendermint_finalize_config(cfg: "TestConfig", peers: List[TendermintNodeConf
                 "value": node_cfg.priv_validator_key.pub_key.value,
             },
             "name": node_cfg.config["moniker"],
+            "power": "10",
         })
         node_genesis_file = os.path.join(node_cfg.config_path, "genesis.json")
         with open(node_genesis_file, "wt") as f:
@@ -610,7 +611,7 @@ def ansible_deploy_tendermint(
         "service_template": "tendermint.service.jinja2",
         "service_desc": "Tendermint",
         "service_exec_cmd": "/usr/local/bin/tendermint node --mode validator --proxy-app=kvstore",
-        "src_binary": "/Users/lanpo/go/bin/tendermint",
+        "src_binary": "/home/lanpo/goApps/bin/tendermint",
         "dest_binary": "/usr/local/bin",
         "src_config_path": os.path.join(workdir, "config"),
         "ansible_sudo_pass": "Luciguy940208",

@@ -20,7 +20,7 @@
 - name: Ensure correct service binary permissions
   file:
     path: "{{ dest_binary }}"
-    mode: 0755
+    mode: 777
     owner: "root"
     group: "root"
 
