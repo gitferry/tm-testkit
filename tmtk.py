@@ -147,16 +147,6 @@ def main():
             "nodes prior to fetching the logs, and then restarts those instances " +
             "that were running previously.",
     )
-    parser_network_fetch_logs.add_argument(
-        "output_path",
-        help="Where to store all desired nodes' logs."
-    )
-    parser_network_fetch_logs.add_argument(
-        "node_or_group_ids",
-        metavar="node_or_group_id",
-        nargs="*",
-        help="Zero or more node or group IDs of network node(s). If this is not supplied, all nodes' logs will be fetched."
-    )
 
     # network reset
     parser_network_reset = subparsers_network.add_parser(
@@ -219,7 +209,6 @@ def main():
         # "aws_keypair_name": os.environ.get("AWS_KEYPAIR_NAME", getattr(args, "aws_keypair_name", default_aws_keypair_name)),
         # "ec2_private_key_path": os.environ.get("EC2_PRIVATE_KEY", getattr(args, "ec2_private_key", default_ec2_private_key)),
         "keep_existing_tendermint_config": getattr(args, "keep_existing_tendermint_config", False),
-        "output_path": getattr(args, "output_path", None),
         "node_or_group_ids": getattr(args, "node_or_group_ids", []),
         "fail_on_missing": not getattr(args, "no_fail_on_missing", False),
         "load_test_id": getattr(args, "load_test_id", None),
@@ -387,19 +376,12 @@ def network_state(
 
 def network_fetch_logs(
     cfg: "TestConfig",
-    output_path=None,
-    node_ids=None,
     **kwargs
 ):
-    if output_path is None or len(output_path) == 0:
-        raise Exception("fetch_logs command requires an output path parameter")
-    
     logger.info("Fetching logs")
     ansible_fetch_logs(
         os.path.join(cfg.home, "tendermint"),
-        resolve_relative_path(output_path, os.getcwd()),
     )
-
 
 
 def deploy_tendermint_network(
@@ -670,13 +652,11 @@ def ansible_set_tendermint_nodes_state(
 
 def ansible_fetch_logs(
     workdir: str,
-    output_path: str,
 ):
     inventory_file = os.path.join(workdir, "inventory")
     sh([
         "ansible-playbook",
         "-i", inventory_file,
-        "-e", "local_log_path=%s" % output_path,
         "-e", "ansible_sudo_pass=Luciguy940208",
         os.path.join("ansible", "fetch-logs.yaml"),
     ])
