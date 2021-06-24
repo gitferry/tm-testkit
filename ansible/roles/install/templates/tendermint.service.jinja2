@@ -15,9 +15,8 @@ LimitRSS=infinity
 LimitCORE=infinity
 LimitNOFILE=65536
 LimitMEMLOCK=infinity
-StandardOutput=syslog
-StandardError=syslog
-SyslogIdentifier={{ service_name }}
+StandardOutput=file:/var/log/tendermint.log
+StandardError=file:/var/log/tendermint.log
 
 [Install]
 WantedBy=multi-user.target
