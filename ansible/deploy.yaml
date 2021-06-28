@@ -8,6 +8,6 @@
     # correspond to the configurations for each and every node group you want to
     # deploy.
     copy_node_config: yes
-    truncate_logs: no
+    truncate_logs: yes
   roles:
     - install

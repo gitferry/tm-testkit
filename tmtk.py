@@ -308,8 +308,6 @@ def tmtest(cfg_file, command, subcommand, **kwargs) -> int:
     if command == "network":
         if subcommand == "deploy":
             fn = network_deploy
-    #     elif subcommand == "destroy":
-    #         fn = network_destroy
         elif subcommand == "start":
             fn = network_start
         elif subcommand == "stop":
@@ -318,8 +316,8 @@ def tmtest(cfg_file, command, subcommand, **kwargs) -> int:
             fn = network_fetch_logs
     #     elif subcommand == "reset":
     #         fn = network_reset
-    #     elif subcommand == "info":
-    #         fn = network_info
+        # elif subcommand == "info":
+        #     fn = network_info
     # elif command == "loadtest":
     #     if subcommand == "start":
     #         fn = loadtest_start
@@ -383,7 +381,6 @@ def network_fetch_logs(
         os.path.join(cfg.home, "tendermint"),
     )
 
-
 def deploy_tendermint_network(
     cfg: "TestConfig",
     keep_existing_tendermint_config: bool = False,
@@ -421,11 +418,10 @@ def tendermint_finalize_config(cfg: "TestConfig", peers: List[TendermintNodeConf
 
     persistent_peers = unique_peer_ids(peers)
 
-    for node_cfg in peers:
-        _cfg = deepcopy(node_cfg.config)
-        _cfg["p2p"]["persistent_peers"] = ",".join(persistent_peers - {node_cfg.peer_id})
-        save_toml_config(os.path.join(node_cfg.config_path, "config.toml"), _cfg)
+    for pp in persistent_peers:
+        logger.info("Get persistent peers: %s", persistent_peers)
 
+    for node_cfg in peers:
         genesis_doc["validators"].append({
             "address": node_cfg.priv_validator_key.address,
             "pub_key": {
@@ -435,6 +431,12 @@ def tendermint_finalize_config(cfg: "TestConfig", peers: List[TendermintNodeConf
             "name": node_cfg.config["moniker"],
             "power": "10",
         })
+
+    for node_cfg in peers:
+        _cfg = deepcopy(node_cfg.config)
+        _cfg["p2p"]["persistent-peers"] = ",".join(persistent_peers - {node_cfg.peer_id})
+        save_toml_config(os.path.join(node_cfg.config_path, "config.toml"), _cfg)
+
         node_genesis_file = os.path.join(node_cfg.config_path, "genesis.json")
         with open(node_genesis_file, "wt") as f:
             json.dump(genesis_doc, f, indent=2)
@@ -594,7 +596,7 @@ def ansible_deploy_tendermint(
         "service_desc": "Tendermint",
         "service_exec_cmd": "/usr/local/bin/tendermint node --mode validator --proxy-app=kvstore",
         "src_binary": "/home/lanpo/goApps/bin/tendermint",
-        "dest_binary": "/usr/local/bin",
+        "dest_binary": "/usr/local/bin/tendermint",
         "src_config_path": os.path.join(workdir, "config"),
         "ansible_sudo_pass": "Luciguy940208",
     }
