@@ -9,7 +9,7 @@
   user:
     name: "{{ service_user }}"
     shell: "{{ service_user_shell }}"
-    home: "/home/{{ service_user }}"
+    home: "/root"
     group: "{{ service_group }}"
 
 - name: Sync the service binary across to the server
@@ -25,7 +25,7 @@
     group: "root"
 
 - name: Delete any existing Tendermint configuration/data
-  file: "path=/home/{{ service_user }}/.tendermint state=absent"
+  file: "path=/{{ service_user }}/.tendermint state=absent"
   when: copy_node_config == True
 
 - name: Optionally truncate Tendermint logs
@@ -39,12 +39,12 @@
 - name: Copy the Tendermint node configuration across
   copy:
     src: "{{ src_config_path }}/{{ node_id }}/"
-    dest: "/home/{{ service_user }}/.tendermint/"
+    dest: "/root/.tendermint/"
   when: copy_node_config == True
 
 - name: Ensure the service user owns the Tendermint home directory
   file:
-    path: "/home/{{ service_user }}/.tendermint/"
+    path: "/root/.tendermint/"
     recurse: yes
     owner: "{{ service_user }}"
     group: "{{ service_group }}"

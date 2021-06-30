@@ -42,16 +42,6 @@ def main():
         default="./tmtestplan.yaml",
         help="The path to the configuration file to use (default: ./tmtestplan.yaml)"
     )
-    # parser.add_argument(
-    #     "--aws-keypair-name",
-    #     default=default_aws_keypair_name,
-    #     help="The name of the AWS keypair you need to use to interact with AWS (defaults to your current username)",
-    # )
-    # parser.add_argument(
-    #     "--ec2-private-key",
-    #     default=default_ec2_private_key,
-    #     help="The path to the private key that corresponds to your AWS keypair (default: ~/.ssh/ec2-user.pem)",
-    # )
     parser.add_argument(
         "--fail-on-missing-envvars",
         action="store_true",
@@ -588,17 +578,16 @@ def ansible_deploy_tendermint(
     logger.info("Generating Ansible configuration for all nodes")
     extra_vars = {
         "service_name": "tendermint",
-        "service_user": "lanpo",
+        "service_user": "root",
         "service_group": "tendermint",
         "service_user_shell": "/bin/bash",
         "service_state": "started",
         "service_template": "tendermint.service.jinja2",
         "service_desc": "Tendermint",
         "service_exec_cmd": "/usr/local/bin/tendermint node --mode validator --proxy-app=kvstore",
-        "src_binary": "/home/lanpo/goApps/bin/tendermint",
+        "src_binary": "/root/goApps/bin/tendermint",
         "dest_binary": "/usr/local/bin/tendermint",
         "src_config_path": os.path.join(workdir, "config"),
-        "ansible_sudo_pass": "Luciguy940208",
     }
 
     inventory = OrderedDict()
@@ -647,7 +636,6 @@ def ansible_set_tendermint_nodes_state(
         "ansible-playbook",
         "-i", inventory_file,
         "-e", "state=%s" % state,
-        "-e", "ansible_sudo_pass=Luciguy940208",
         os.path.join("ansible", "tendermint-state.yaml"),
     ])
     logger.info("Hosts' state successfully set to \"%s\"", state)
@@ -659,7 +647,6 @@ def ansible_fetch_logs(
     sh([
         "ansible-playbook",
         "-i", inventory_file,
-        "-e", "ansible_sudo_pass=Luciguy940208",
         os.path.join("ansible", "fetch-logs.yaml"),
     ])
 
