@@ -133,3 +133,4 @@ mytestplan.yaml
 
 pri_ips.txt
 pub_ips.txt
+*.csv

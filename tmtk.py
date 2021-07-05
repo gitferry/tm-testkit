@@ -425,6 +425,8 @@ def tendermint_finalize_config(cfg: "TestConfig", peers: List[TendermintNodeConf
     for node_cfg in peers:
         _cfg = deepcopy(node_cfg.config)
         _cfg["p2p"]["persistent-peers"] = ",".join(persistent_peers - {node_cfg.peer_id})
+        _cfg["rpc"]["laddr"] = "tcp://0.0.0.0:26657"
+        _cfg["instrumentation"]["prometheus"] = True
         save_toml_config(os.path.join(node_cfg.config_path, "config.toml"), _cfg)
 
         node_genesis_file = os.path.join(node_cfg.config_path, "genesis.json")
