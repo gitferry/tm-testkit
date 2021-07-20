@@ -118,6 +118,7 @@ data/
 # Rope project settings
 .ropeproject
 pub_ips.txt
+all_ips.txt
 pri_ips.txt
 
 # mkdocs documentation

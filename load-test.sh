@@ -1,4 +1,4 @@
-tm-load-test -c 1 -T 10 -r 100 -s 250 \
+tm-load-test -c 1 -T 100 -r 400 -s 1024 \
 	    --broadcast-tx-method async \
-	    --endpoints ws://121.199.17.121:26657/websocket \
+	    --endpoints ws://47.98.176.161:26657/websocket \
 	    --stats-output ./stats.csv
